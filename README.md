@@ -1,16 +1,14 @@
-## Hi there 👋
+# 👋 Hi, I'm [Feikaifeng]!
 
-<!--
-**KevinFei-Pro/KevinFei-Pro** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+Welcome to my GitHub profile! Here you'll find a showcase of my work, skills, and favorite projects. I'm passionate about technology, open source, and continuous learning.
 
-Here are some ideas to get you started:
+## 🚀 About Me
+我是一名拥有超过10年经验的移动端工程师，专注于iOS和Flutter领域。多年来，我参与并负责了多个移动应用的架构设计与开发，熟悉从产品需求到上线的全流程。持续学习和探索新技术是我的动力，我热衷于通过开源项目分享技术经验，并帮助更多开发者成长。
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## 🛠️ Skills
+- Swift
+- Dart
+- iOS开发
+- Flutter开发
+- 移动端架构设计
+- 性能优化与用户体验提升
