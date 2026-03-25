@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电梯大数据监控看板</title>
+  <script src="echarts-lite.js"></script>
+  <style>
+    /* ========== Reset & Base ========== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-main: #050d1a;
+      --bg-card: rgba(8, 26, 54, 0.85);
+      --bg-card2: rgba(6, 20, 42, 0.9);
+      --border: rgba(0, 200, 255, 0.18);
+      --accent: #00c8ff;
+      --accent2: #00ff9d;
+      --accent3: #ff6b35;
+      --accent4: #f7c948;
+      --text-primary: #e8f4ff;
+      --text-secondary: #7fb3d3;
+      --text-dim: #3d6a8a;
+      --danger: #ff4757;
+      --warn: #ffa502;
+      --success: #2ed573;
+      --health-good: #2ed573;
+      --health-warn: #ffa502;
+      --health-bad: #ff4757;
+      --shadow-card: 0 4px 32px rgba(0,200,255,0.08), 0 1px 4px rgba(0,0,0,0.6);
+      --glow: 0 0 20px rgba(0,200,255,0.25);
+    }
+
+    html { min-height: 100%; overflow-x: hidden; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(ellipse 80% 40% at 50% -10%, rgba(0,100,200,0.18) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, transparent, transparent 60px, rgba(0,200,255,0.025) 60px, rgba(0,200,255,0.025) 61px),
+        repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,200,255,0.025) 60px, rgba(0,200,255,0.025) 61px);
+    }
+
+    /* ========== Layout ========== */
+    .page-wrapper { display: flex; flex-direction: column; min-height: 100vh; padding: 0 0 24px; }
+
+    /* ========== Header ========== */
+    .header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 72px;
+      background: linear-gradient(90deg, rgba(0,30,70,0.98) 0%, rgba(0,60,130,0.9) 50%, rgba(0,30,70,0.98) 100%);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 24px rgba(0,200,255,0.15);
+      z-index: 100;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), var(--accent), transparent);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #0050b3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; box-shadow: 0 0 16px rgba(0,200,255,0.4);
+    }
+    .header-title { line-height: 1.2; }
+    .header-title h1 { font-size: 22px; font-weight: 700; letter-spacing: 3px;
+      background: linear-gradient(90deg, #fff, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .header-title p { font-size: 12px; color: var(--text-secondary); letter-spacing: 1px; margin-top: 2px; }
+    .header-center { position: absolute; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 28px; }
+    .header-stat { text-align: center; }
+    .header-stat .val { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .header-stat .lbl { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+    .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    #clock { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+    #date-label { font-size: 12px; color: var(--text-secondary); letter-spacing: 1px; }
+    .online-badge {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--success);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+      animation: pulse 1.5s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.75); }
+    }
+
+    /* ========== KPI Bar ========== */
+    .kpi-bar {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      padding: 16px 24px;
+    }
+    .kpi-card {
+      position: relative;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--glow); }
+    .kpi-card::after {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 2px;
+    }
+    .kpi-card.c1::after { background: linear-gradient(90deg, var(--accent), transparent); }
+    .kpi-card.c2::after { background: linear-gradient(90deg, var(--success), transparent); }
+    .kpi-card.c3::after { background: linear-gradient(90deg, var(--warn), transparent); }
+    .kpi-card.c4::after { background: linear-gradient(90deg, var(--danger), transparent); }
+    .kpi-card.c5::after { background: linear-gradient(90deg, #a29bfe, transparent); }
+    .kpi-card.c6::after { background: linear-gradient(90deg, var(--accent2), transparent); }
+    .kpi-icon {
+      width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+    }
+    .kpi-card.c1 .kpi-icon { background: rgba(0,200,255,0.12); }
+    .kpi-card.c2 .kpi-icon { background: rgba(46,213,115,0.12); }
+    .kpi-card.c3 .kpi-icon { background: rgba(255,165,2,0.12); }
+    .kpi-card.c4 .kpi-icon { background: rgba(255,71,87,0.12); }
+    .kpi-card.c5 .kpi-icon { background: rgba(162,155,254,0.12); }
+    .kpi-card.c6 .kpi-icon { background: rgba(0,255,157,0.12); }
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-val { font-size: 26px; font-weight: 700; line-height: 1.1; }
+    .kpi-card.c1 .kpi-val { color: var(--accent); }
+    .kpi-card.c2 .kpi-val { color: var(--success); }
+    .kpi-card.c3 .kpi-val { color: var(--warn); }
+    .kpi-card.c4 .kpi-val { color: var(--danger); }
+    .kpi-card.c5 .kpi-val { color: #a29bfe; }
+    .kpi-card.c6 .kpi-val { color: var(--accent2); }
+    .kpi-label { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+    .kpi-trend { font-size: 11px; margin-top: 4px; }
+    .kpi-trend.up { color: var(--success); }
+    .kpi-trend.dn { color: var(--danger); }
+
+    /* ========== Main Grid ========== */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      grid-template-rows: auto auto auto;
+      gap: 12px;
+      padding: 0 24px;
+      flex: 1;
+    }
+
+    /* ========== Card ========== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 16px; right: 16px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0,200,255,0.4), transparent);
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 14px; font-weight: 600; color: var(--text-primary);
+    }
+    .card-title::before {
+      content: '';
+      display: inline-block; width: 3px; height: 16px; border-radius: 2px;
+      background: var(--accent);
+    }
+    .card-badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 20px;
+      background: rgba(0,200,255,0.12); color: var(--accent);
+      border: 1px solid rgba(0,200,255,0.2);
+    }
+    .chart-container { width: 100%; }
+
+    /* ========== Elevator Status Grid ========== */
+    .elevator-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .elv-item {
+      background: rgba(0,30,60,0.7);
+      border: 1px solid rgba(0,200,255,0.12);
+      border-radius: 8px;
+      padding: 8px 6px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .elv-item:hover { border-color: var(--accent); transform: scale(1.04); box-shadow: 0 0 12px rgba(0,200,255,0.2); }
+    .elv-item .elv-id { font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; }
+    .elv-item .elv-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+    .elv-item .elv-floor { font-size: 12px; font-weight: 600; }
+    .elv-item .elv-status { font-size: 10px; margin-top: 2px; }
+    .elv-item.running { border-color: rgba(0,200,255,0.3); }
+    .elv-item.running .elv-status { color: var(--accent); }
+    .elv-item.running .elv-floor { color: var(--accent); }
+    .elv-item.idle { border-color: rgba(46,213,115,0.2); }
+    .elv-item.idle .elv-status { color: var(--success); }
+    .elv-item.idle .elv-floor { color: var(--success); }
+    .elv-item.fault { border-color: rgba(255,71,87,0.4); background: rgba(255,71,87,0.06); }
+    .elv-item.fault .elv-status { color: var(--danger); }
+    .elv-item.fault .elv-floor { color: var(--danger); }
+    .elv-item.maintain { border-color: rgba(255,165,2,0.3); background: rgba(255,165,2,0.05); }
+    .elv-item.maintain .elv-status { color: var(--warn); }
+    .elv-item.maintain .elv-floor { color: var(--warn); }
+    .elv-item .fault-dot {
+      position: absolute; top: 4px; right: 4px;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--danger);
+      animation: pulse 1s infinite;
+    }
+
+    /* ========== Fault List ========== */
+    .fault-list { display: flex; flex-direction: column; gap: 6px; }
+    .fault-item {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(0,20,50,0.6);
+      border: 1px solid rgba(255,71,87,0.15);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .fault-level {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .fault-level.high { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .fault-level.mid { background: var(--warn); }
+    .fault-level.low { background: #74b9ff; }
+    .fault-info { flex: 1; min-width: 0; }
+    .fault-name { color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fault-meta { color: var(--text-secondary); margin-top: 2px; font-size: 11px; }
+    .fault-time { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+
+    /* ========== Scroll Animation ========== */
+    .scroll-container { overflow: hidden; max-height: 220px; }
+    .scroll-inner { animation: scrollUp 20s linear infinite; }
+    .scroll-inner:hover { animation-play-state: paused; }
+    @keyframes scrollUp {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-50%); }
+    }
+
+    /* ========== Legend ========== */
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ========== Grid Column Spans ========== */
+    .col-span-2 { grid-column: span 2; }
+    .col-span-3 { grid-column: span 3; }
+    .row-span-2 { grid-row: span 2; }
+
+    /* ========== Energy Stats ========== */
+    .energy-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .energy-stat-item {
+      text-align: center;
+      background: rgba(0,255,157,0.05);
+      border: 1px solid rgba(0,255,157,0.12);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .energy-stat-item .ev { font-size: 18px; font-weight: 700; color: var(--accent2); }
+    .energy-stat-item .el { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ========== Component Grid ========== */
+    .component-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .comp-card {
+      background: rgba(0,20,50,0.5);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .comp-icon { font-size: 18px; flex-shrink: 0; }
+    .comp-info { flex: 1; min-width: 0; }
+    .comp-name { font-size: 12px; color: var(--text-secondary); }
+    .comp-val { font-size: 13px; font-weight: 600; margin-top: 2px; }
+    .comp-val.g { color: var(--success); }
+    .comp-val.w { color: var(--warn); }
+    .comp-val.b { color: var(--danger); }
+    .comp-mini-bar { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+    .comp-mini-fill { height: 100%; border-radius: 2px; }
+    .comp-mini-fill.g { background: var(--success); }
+    .comp-mini-fill.w { background: var(--warn); }
+    .comp-mini-fill.b { background: var(--danger); }
+
+    /* ========== Maintenance Table ========== */
+    .maint-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .maint-table th {
+      color: var(--text-secondary); font-weight: 500; padding: 6px 8px;
+      border-bottom: 1px solid var(--border); text-align: left;
+    }
+    .maint-table td {
+      padding: 7px 8px; border-bottom: 1px solid rgba(0,200,255,0.05);
+      color: var(--text-primary);
+    }
+    .maint-table tr:hover td { background: rgba(0,200,255,0.04); }
+    .tag {
+      display: inline-block; padding: 2px 7px; border-radius: 4px;
+      font-size: 11px; font-weight: 500;
+    }
+    .tag.done { background: rgba(46,213,115,0.15); color: var(--success); }
+    .tag.pending { background: rgba(255,165,2,0.15); color: var(--warn); }
+    .tag.urgent { background: rgba(255,71,87,0.15); color: var(--danger); }
+
+    /* ========== Region Table ========== */
+    .region-list { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+    .region-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .region-name { color: var(--text-secondary); width: 56px; flex-shrink: 0; }
+    .region-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+    .region-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .region-count { color: var(--accent); font-weight: 600; width: 32px; text-align: right; }
+    .region-rate { color: var(--text-secondary); width: 36px; text-align: right; }
+
+    /* ========== Alarm Ticker ========== */
+    .alarm-ticker {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(255,71,87,0.08);
+      border: 1px solid rgba(255,71,87,0.2);
+      border-radius: 8px;
+      padding: 7px 12px;
+      margin: 0 24px 12px;
+      font-size: 12px;
+      overflow: hidden;
+    }
+    .alarm-label {
+      background: var(--danger); color: #fff;
+      padding: 2px 8px; border-radius: 4px;
+      font-weight: 600; font-size: 11px; flex-shrink: 0;
+    }
+    .alarm-content { flex: 1; overflow: hidden; }
+    .alarm-text {
+      white-space: nowrap;
+      animation: marquee 30s linear infinite;
+      color: var(--text-secondary);
+    }
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* ========== Scrollbar ========== */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    ::-webkit-scrollbar-thumb { background: rgba(0,200,255,0.3); border-radius: 2px; }
+
+    /* ========== Responsive ========== */
+    @media (max-width: 1400px) {
+      .main-grid { grid-template-columns: 280px 1fr 280px; }
+      .kpi-bar { grid-template-columns: repeat(3, 1fr); }
+      .elevator-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 1100px) {
+      .main-grid { grid-template-columns: 1fr 1fr; }
+      .header-center { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo">🛗</div>
+      <div class="header-title">
+        <h1>电梯大数据监控看板</h1>
+        <p>ELEVATOR BIG DATA MONITORING DASHBOARD · V2.0</p>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="header-stat"><div class="val" id="h-total">--</div><div class="lbl">设备总数</div></div>
+      <div class="header-stat"><div class="val" id="h-online" style="color:var(--success)">--</div><div class="lbl">在线运行</div></div>
+      <div class="header-stat"><div class="val" id="h-fault" style="color:var(--danger)">--</div><div class="lbl">故障告警</div></div>
+      <div class="header-stat"><div class="val" id="h-maint" style="color:var(--warn)">--</div><div class="lbl">维保待办</div></div>
+      <div class="header-stat"><div class="val" id="h-trips" style="color:var(--accent2)">--</div><div class="lbl">今日运行次数</div></div>
+    </div>
+    <div class="header-right">
+      <div id="clock">--:--:--</div>
+      <div id="date-label">--</div>
+      <div class="online-badge"><span class="dot"></span> 实时监控中</div>
+    </div>
+  </header>
+
+  <!-- ===== ALARM TICKER ===== -->
+  <div class="alarm-ticker">
+    <span class="alarm-label">⚠ 告警</span>
+    <div class="alarm-content">
+      <span class="alarm-text" id="alarm-text">
+        &nbsp;[10:42:31] A栋3号电梯 - 门区感应异常，请立即检查 &nbsp;|&nbsp;
+        [10:38:15] B栋1号电梯 - 运行速度偏差超限 &nbsp;|&nbsp;
+        [10:21:07] C栋5号电梯 - 曳引机温度过高 (78°C) &nbsp;|&nbsp;
+        [10:15:44] D栋2号电梯 - 年度维保即将到期 (3天后) &nbsp;|&nbsp;
+        [09:58:20] E栋4号电梯 - 安全回路异常断开 &nbsp;|&nbsp;
+        [09:44:11] A栋7号电梯 - 轿厢照明故障 &nbsp;|&nbsp;
+        [10:42:31] A栋3号电梯 - 门区感应异常，请立即检查 &nbsp;|&nbsp;
+        [10:38:15] B栋1号电梯 - 运行速度偏差超限 &nbsp;|&nbsp;
+        [10:21:07] C栋5号电梯 - 曳引机温度过高 (78°C) &nbsp;|&nbsp;
+        [10:15:44] D栋2号电梯 - 年度维保即将到期 (3天后) &nbsp;|&nbsp;
+        [09:58:20] E栋4号电梯 - 安全回路异常断开 &nbsp;|&nbsp;
+        [09:44:11] A栋7号电梯 - 轿厢照明故障
+      </span>
+    </div>
+  </div>
+
+  <!-- ===== KPI BAR ===== -->
+  <div class="kpi-bar">
+    <div class="kpi-card c1">
+      <div class="kpi-icon">🏢</div>
+      <div class="kpi-body">
+        <div class="kpi-val">2,486</div>
+        <div class="kpi-label">设备总数（台）</div>
+        <div class="kpi-trend up">↑ 较上月 +32</div>
+      </div>
+    </div>
+    <div class="kpi-card c2">
+      <div class="kpi-icon">✅</div>
+      <div class="kpi-body">
+        <div class="kpi-val">2,341</div>
+        <div class="kpi-label">在线运行（台）</div>
+        <div class="kpi-trend up">在线率 94.2%</div>
+      </div>
+    </div>
+    <div class="kpi-card c3">
+      <div class="kpi-icon">🔧</div>
+      <div class="kpi-body">
+        <div class="kpi-val">87</div>
+        <div class="kpi-label">维保中（台）</div>
+        <div class="kpi-trend dn">↑ 较昨日 +5</div>
+      </div>
+    </div>
+    <div class="kpi-card c4">
+      <div class="kpi-icon">⚠️</div>
+      <div class="kpi-body">
+        <div class="kpi-val">58</div>
+        <div class="kpi-label">故障告警（条）</div>
+        <div class="kpi-trend up">↓ 较昨日 -12</div>
+      </div>
+    </div>
+    <div class="kpi-card c5">
+      <div class="kpi-icon">⚡</div>
+      <div class="kpi-body">
+        <div class="kpi-val">38,420</div>
+        <div class="kpi-label">今日耗电（kWh）</div>
+        <div class="kpi-trend up">↓ 节能 8.3%</div>
+      </div>
+    </div>
+    <div class="kpi-card c6">
+      <div class="kpi-icon">💚</div>
+      <div class="kpi-body">
+        <div class="kpi-val">92.6%</div>
+        <div class="kpi-label">整体健康度</div>
+        <div class="kpi-trend up">↑ 较上周 +1.2%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN GRID ===== -->
+  <div class="main-grid">
+
+    <!-- LEFT COL: 电梯实时状态 -->
+    <div class="card" style="grid-row: span 2;">
+      <div class="card-header">
+        <div class="card-title">电梯实时状态</div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>运行中</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>待机</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>故障</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>维保</div>
+        </div>
+      </div>
+      <div class="elevator-grid" id="elevatorGrid"></div>
+    </div>
+
+    <!-- CENTER: 运行趋势 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">今日运行次数趋势</div>
+        <div class="card-badge">实时更新</div>
+      </div>
+      <div class="chart-container" id="runTrendChart" style="height:200px;"></div>
+    </div>
+
+    <!-- RIGHT COL: 故障分布 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">故障类型分布</div>
+        <div class="card-badge">近30天</div>
+      </div>
+      <div class="chart-container" id="faultPieChart" style="height:200px;"></div>
+    </div>
+
+    <!-- CENTER: 耗电分析 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">⚡ 耗电量分析</div>
+        <div class="card-badge">近7日 kWh</div>
+      </div>
+      <div class="energy-stats">
+        <div class="energy-stat-item">
+          <div class="ev">38,420</div>
+          <div class="el">今日耗电(kWh)</div>
+        </div>
+        <div class="energy-stat-item">
+          <div class="ev">268,940</div>
+          <div class="el">本周累计(kWh)</div>
+        </div>
+        <div class="energy-stat-item">
+          <div class="ev">15.46</div>
+          <div class="el">单梯均耗(kWh)</div>
+        </div>
+      </div>
+      <div class="chart-container" id="energyChart" style="height:150px;"></div>
+    </div>
+
+    <!-- RIGHT COL: 部件健康度 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">💚 部件健康度</div>
+        <div class="card-badge">实时评估</div>
+      </div>
+      <div class="component-grid" id="componentGrid"></div>
+    </div>
+
+    <!-- BOTTOM LEFT: 故障告警列表 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">实时故障告警</div>
+        <div class="card-badge" style="color:var(--danger);border-color:rgba(255,71,87,0.3);background:rgba(255,71,87,0.1)">58 条</div>
+      </div>
+      <div class="scroll-container">
+        <div class="scroll-inner" id="faultList"></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM CENTER: 运行统计 -->
+    <div class="card col-span-2">
+      <div class="card-header">
+        <div class="card-title">月度运行统计 / 维保合规率</div>
+        <div class="card-badge">本月</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="chart-container" id="monthRunChart" style="height:180px;"></div>
+        <div class="chart-container" id="complianceChart" style="height:180px;"></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM LEFT: 区域分布 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">区域电梯分布</div>
+      </div>
+      <div class="region-list" id="regionList"></div>
+    </div>
+
+    <!-- BOTTOM CENTER: 健康度雷达 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">健康度综合雷达</div>
+        <div class="card-badge">部件维度</div>
+      </div>
+      <div class="chart-container" id="healthRadarChart" style="height:210px;"></div>
+    </div>
+
+    <!-- BOTTOM RIGHT: 维保记录 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">近期维保记录</div>
+      </div>
+      <div class="scroll-container">
+        <div class="scroll-inner" id="maintList"></div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+</div><!-- /page-wrapper -->
+
+<script>
+/* =====================================================
+   工具函数
+   ===================================================== */
+const $ = id => document.getElementById(id);
+const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+/* =====================================================
+   时钟
+   ===================================================== */
+function updateClock() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  $('clock').textContent = `${hh}:${mm}:${ss}`;
+  const days = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  const y = now.getFullYear(), mo = now.getMonth()+1, d = now.getDate();
+  $('date-label').textContent = `${y}年${String(mo).padStart(2,'0')}月${String(d).padStart(2,'0')}日  ${days[now.getDay()]}`;
+}
+setInterval(updateClock, 1000); updateClock();
+
+/* =====================================================
+   Header 数字
+   ===================================================== */
+function updateHeaderStats() {
+  $('h-total').textContent = '2,486';
+  $('h-online').textContent = '2,341';
+  $('h-fault').textContent = '58';
+  $('h-maint').textContent = '87';
+  $('h-trips').textContent = rand(85000, 92000).toLocaleString();
+}
+setInterval(updateHeaderStats, 5000); updateHeaderStats();
+
+/* =====================================================
+   电梯状态格子
+   ===================================================== */
+const elvData = [];
+const statusList = ['running','running','running','idle','idle','fault','maintain'];
+const floorList = [3,7,12,2,15,8,6,1,10,4,18,9];
+for (let i = 1; i <= 48; i++) {
+  const s = statusList[Math.floor(Math.random() * statusList.length)];
+  const f = floorList[Math.floor(Math.random() * floorList.length)];
+  elvData.push({ id: `EL${String(i).padStart(3,'0')}`, status: s, floor: f });
+}
+function renderElevators() {
+  const grid = $('elevatorGrid');
+  const icons = { running:'🔼', idle:'🛗', fault:'⛔', maintain:'🔧' };
+  const labels = { running:'运行中', idle:'待机', fault:'故障', maintain:'维保' };
+  grid.innerHTML = elvData.map(e => `
+    <div class="elv-item ${e.status}" title="${e.id} · 当前${e.floor}层">
+      ${e.status === 'fault' ? '<span class="fault-dot"></span>' : ''}
+      <div class="elv-id">${e.id}</div>
+      <span class="elv-icon">${icons[e.status]}</span>
+      <div class="elv-floor">${e.floor}F</div>
+      <div class="elv-status">${labels[e.status]}</div>
+    </div>
+  `).join('');
+}
+renderElevators();
+
+/* =====================================================
+   ECharts 公共样式
+   ===================================================== */
+const baseTextStyle = { color: '#7fb3d3', fontSize: 11 };
+const baseAxisLine  = { lineStyle: { color: 'rgba(0,200,255,0.15)' } };
+const baseSplitLine = { lineStyle: { color: 'rgba(0,200,255,0.08)', type: 'dashed' } };
+const tooltipStyle  = {
+  trigger: 'axis',
+  backgroundColor: 'rgba(5,20,50,0.9)',
+  borderColor: 'rgba(0,200,255,0.3)',
+  textStyle: { color: '#e8f4ff' }
+};
+
+/* -- 今日运行次数趋势 -- */
+const runTrendHours = Array.from({length: 24}, (_, i) => `${String(i).padStart(2,'0')}:00`);
+const runTrendData  = runTrendHours.map((_, i) => i < new Date().getHours() + 1 ? rand(1200, 4800) : null);
+const runTrendChart = echarts.init($('runTrendChart'));
+(function initRunTrend() {
+  runTrendChart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 10, right: 16, bottom: 28, left: 46 },
+    tooltip: tooltipStyle,
+    xAxis: {
+      type: 'category', data: runTrendHours,
+      axisLabel: { ...baseTextStyle, interval: 3 },
+      axisLine: baseAxisLine, splitLine: { show: false }, axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value', axisLabel: baseTextStyle,
+      axisLine: { show: false }, splitLine: baseSplitLine, axisTick: { show: false }
+    },
+    series: [{
+      data: runTrendData, type: 'line', smooth: true, symbol: 'none',
+      lineStyle: { color: '#00c8ff', width: 2.5 },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(0,200,255,0.35)' }, { offset: 1, color: 'rgba(0,200,255,0.02)' }]
+        }
+      }
+    }]
+  });
+})();
+
+/* -- 故障类型分布饼图 -- */
+const faultPieChart = echarts.init($('faultPieChart'));
+(function initFaultPie() {
+  const faultTypes = [
+    { name: '门系统故障',   value: 238, color: '#ff4757' },
+    { name: '电气回路异常', value: 186, color: '#ffa502' },
+    { name: '曳引机故障',   value: 124, color: '#f7c948' },
+    { name: '安全部件触发', value: 98,  color: '#a29bfe' },
+    { name: '通讯故障',     value: 76,  color: '#74b9ff' },
+    { name: '其他故障',     value: 54,  color: '#55efc4' },
+  ];
+  faultPieChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(5,20,50,0.9)',
+      borderColor: 'rgba(0,200,255,0.3)',
+      textStyle: { color: '#e8f4ff' },
+      formatter: '{b}<br/>{c} 次 ({d}%)'
+    },
+    legend: {
+      orient: 'vertical', right: 0, top: 'center',
+      textStyle: { color: '#7fb3d3', fontSize: 10 },
+      itemWidth: 10, itemHeight: 10,
+      formatter: n => n.length > 6 ? n.slice(0, 6) + '…' : n
+    },
+    series: [{
+      type: 'pie', radius: ['40%', '72%'], center: ['36%', '50%'],
+      avoidLabelOverlap: false, label: { show: false },
+      emphasis: { label: { show: true, fontSize: 12, fontWeight: 'bold', color: '#fff' } },
+      data: faultTypes.map(f => ({ name: f.name, value: f.value, itemStyle: { color: f.color } }))
+    }]
+  });
+})();
+
+/* -- 耗电量分析 -- */
+const energyChart = echarts.init($('energyChart'));
+(function initEnergy() {
+  const days    = ['周一','周二','周三','周四','周五','周六','周日'];
+  const consume = [36200, 38100, 34800, 39600, 37200, 32500, 38420];
+  const target  = [40000, 40000, 40000, 40000, 40000, 40000, 40000];
+  energyChart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, right: 10, bottom: 28, left: 46 },
+    tooltip: { ...tooltipStyle },
+    legend: {
+      data: ['实际耗电', '能耗目标'], bottom: 2,
+      textStyle: { color: '#7fb3d3', fontSize: 10 }, itemWidth: 12, itemHeight: 8
+    },
+    xAxis: { type: 'category', data: days, axisLabel: baseTextStyle, axisLine: baseAxisLine, axisTick: { show: false } },
+    yAxis: { type: 'value', axisLabel: baseTextStyle, axisLine: { show: false }, splitLine: baseSplitLine, axisTick: { show: false } },
+    series: [
+      {
+        name: '实际耗电', type: 'bar', data: consume, barMaxWidth: 22,
+        itemStyle: {
+          color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#00ff9d'},{offset:1,color:'#00b377'}] },
+          borderRadius: [3,3,0,0]
+        }
+      },
+      {
+        name: '能耗目标', type: 'line', data: target, symbol: 'none',
+        lineStyle: { color: '#ffa502', type: 'dashed', width: 1.5 }
+      }
+    ]
+  });
+})();
+
+/* -- 月度运行统计 -- */
+const monthRunChart = echarts.init($('monthRunChart'));
+(function initMonthRun() {
+  const days  = Array.from({length: 30}, (_, i) => `${i + 1}日`);
+  const runs  = days.map(() => rand(75000, 120000));
+  const hours = days.map(() => rand(800, 1400));
+  monthRunChart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, right: 50, bottom: 28, left: 46 },
+    tooltip: { ...tooltipStyle },
+    legend: {
+      data: ['运行次数','运行时长(h)'], bottom: 2,
+      textStyle: { color: '#7fb3d3', fontSize: 10 }, itemWidth: 12, itemHeight: 8
+    },
+    xAxis: {
+      type: 'category', data: days, boundaryGap: false,
+      axisLabel: { ...baseTextStyle, interval: 4 }, axisLine: baseAxisLine, axisTick: { show: false }
+    },
+    yAxis: [
+      { type:'value', name:'次数', axisLabel: baseTextStyle, axisLine:{show:false}, splitLine: baseSplitLine, nameTextStyle:{color:'#7fb3d3',fontSize:10} },
+      { type:'value', name:'时长', axisLabel: baseTextStyle, axisLine:{show:false}, splitLine:{show:false}, nameTextStyle:{color:'#7fb3d3',fontSize:10} }
+    ],
+    series: [
+      {
+        name: '运行次数', type: 'bar', data: runs, yAxisIndex: 0, barMaxWidth: 8,
+        itemStyle: {
+          color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'rgba(0,200,255,0.9)'},{offset:1,color:'rgba(0,200,255,0.2)'}] },
+          borderRadius: [2,2,0,0]
+        }
+      },
+      {
+        name: '运行时长(h)', type: 'line', data: hours, yAxisIndex: 1, symbol: 'none', smooth: true,
+        lineStyle: { color: '#a29bfe', width: 2 },
+        areaStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'rgba(162,155,254,0.3)'},{offset:1,color:'rgba(162,155,254,0.02)'}] } }
+      }
+    ]
+  });
+})();
+
+/* -- 维保合规率 -- */
+const complianceChart = echarts.init($('complianceChart'));
+(function initCompliance() {
+  const months     = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const compliance = [91,93,90,94,96,95,97,93,95,96,94,98];
+  complianceChart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, right: 16, bottom: 28, left: 40 },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(5,20,50,0.9)',
+      borderColor: 'rgba(0,200,255,0.3)',
+      textStyle: { color: '#e8f4ff' },
+      formatter: p => `${p[0].name}<br/>合规率：${p[0].value}%`
+    },
+    xAxis: {
+      type: 'category', data: months,
+      axisLabel: { ...baseTextStyle, interval: 1 }, axisLine: baseAxisLine, axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value', min: 85, max: 100,
+      axisLabel: { ...baseTextStyle, formatter: v => v + '%' },
+      axisLine: { show: false }, splitLine: baseSplitLine
+    },
+    series: [{
+      type: 'line', data: compliance, smooth: true, symbol: 'circle', symbolSize: 5,
+      lineStyle: { color: '#f7c948', width: 2.5 },
+      itemStyle: { color: '#f7c948', borderColor: '#fff', borderWidth: 1.5 },
+      areaStyle: {
+        color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'rgba(247,201,72,0.3)'},{offset:1,color:'rgba(247,201,72,0.02)'}] }
+      }
+    }]
+  });
+})();
+
+/* -- 健康度雷达 -- */
+const healthRadarChart = echarts.init($('healthRadarChart'));
+(function initHealthRadar() {
+  healthRadarChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      backgroundColor: 'rgba(5,20,50,0.9)',
+      borderColor: 'rgba(0,200,255,0.3)',
+      textStyle: { color: '#e8f4ff' }
+    },
+    legend: {
+      data: ['当前健康度','上月均值'], bottom: 2,
+      textStyle: { color: '#7fb3d3', fontSize: 10 }, itemWidth: 12, itemHeight: 8
+    },
+    radar: {
+      radius: '62%', center: ['50%','46%'],
+      indicator: [
+        { name: '曳引系统', max: 100 }, { name: '门系统', max: 100 },
+        { name: '安全部件', max: 100 }, { name: '电气系统', max: 100 },
+        { name: '控制系统', max: 100 }, { name: '机械部件', max: 100 }
+      ],
+      axisLine:  { lineStyle: { color: 'rgba(0,200,255,0.2)' } },
+      splitLine: { lineStyle: { color: 'rgba(0,200,255,0.1)' } },
+      splitArea: { areaStyle: { color: ['rgba(0,200,255,0.02)', 'rgba(0,200,255,0.05)'] } },
+      name: { textStyle: { color: '#7fb3d3', fontSize: 10 } }
+    },
+    series: [{
+      type: 'radar',
+      data: [
+        {
+          name: '当前健康度', value: [94, 82, 97, 89, 96, 91],
+          lineStyle: { color: '#00ff9d', width: 2 },
+          areaStyle: { color: 'rgba(0,255,157,0.15)' },
+          itemStyle: { color: '#00ff9d' }
+        },
+        {
+          name: '上月均值', value: [90, 85, 93, 86, 91, 88],
+          lineStyle: { color: 'rgba(162,155,254,0.7)', width: 1.5, type: 'dashed' },
+          areaStyle: { color: 'rgba(162,155,254,0.08)' },
+          itemStyle: { color: '#a29bfe' }
+        }
+      ]
+    }]
+  });
+})();
+
+/* =====================================================
+   故障列表（自动滚动，数据翻倍）
+   ===================================================== */
+const faultData = [
+  { level:'high', name:'A栋3号 - 门区感应异常',   elvid:'EL003', time:'10:42' },
+  { level:'high', name:'E栋4号 - 安全回路断开',   elvid:'EL024', time:'09:58' },
+  { level:'high', name:'C栋5号 - 曳引机过温',     elvid:'EL015', time:'10:21' },
+  { level:'mid',  name:'B栋1号 - 运行速度偏差',   elvid:'EL011', time:'10:38' },
+  { level:'mid',  name:'F栋2号 - 平层精度超限',   elvid:'EL032', time:'09:12' },
+  { level:'mid',  name:'G栋6号 - 控制器通讯超时', elvid:'EL046', time:'08:55' },
+  { level:'low',  name:'A栋7号 - 轿厢照明故障',   elvid:'EL007', time:'09:44' },
+  { level:'low',  name:'D栋2号 - 维保即将到期',   elvid:'EL022', time:'10:15' },
+  { level:'low',  name:'H栋9号 - 超载传感器告警', elvid:'EL039', time:'08:30' },
+];
+const faultFull = [...faultData, ...faultData];
+$('faultList').innerHTML = faultFull.map(f => `
+  <div class="fault-item">
+    <span class="fault-level ${f.level}"></span>
+    <div class="fault-info">
+      <div class="fault-name">${f.name}</div>
+      <div class="fault-meta">${f.elvid} · ${f.level==='high'?'紧急':f.level==='mid'?'警告':'提示'}</div>
+    </div>
+    <div class="fault-time">${f.time}</div>
+  </div>
+`).join('');
+
+/* =====================================================
+   部件健康度卡片
+   ===================================================== */
+const components = [
+  { icon:'⚙️',  name:'曳引机',   score:94, cls:'g' },
+  { icon:'🚪', name:'门机系统', score:82, cls:'w' },
+  { icon:'🛡️', name:'安全钳',   score:97, cls:'g' },
+  { icon:'🔌', name:'电气控制', score:89, cls:'g' },
+  { icon:'🔩', name:'导轨/轿架', score:91, cls:'g' },
+  { icon:'📡', name:'通讯模块', score:76, cls:'w' },
+  { icon:'🧲', name:'制动器',   score:65, cls:'b' },
+  { icon:'💡', name:'照明/应急', score:88, cls:'g' },
+];
+$('componentGrid').innerHTML = components.map(c => `
+  <div class="comp-card">
+    <div class="comp-icon">${c.icon}</div>
+    <div class="comp-info">
+      <div class="comp-name">${c.name}</div>
+      <div class="comp-val ${c.cls}">${c.score}分</div>
+      <div class="comp-mini-bar">
+        <div class="comp-mini-fill ${c.cls}" style="width:${c.score}%"></div>
+      </div>
+    </div>
+  </div>
+`).join('');
+
+/* =====================================================
+   维保记录（自动滚动，数据翻倍）
+   ===================================================== */
+const maintData = [
+  { elvid:'EL012', addr:'A栋3单元', type:'年度定检',     tech:'张工', date:'03/24', status:'done' },
+  { elvid:'EL025', addr:'B栋1单元', type:'季度保养',     tech:'李工', date:'03/24', status:'done' },
+  { elvid:'EL038', addr:'C栋2单元', type:'曳引机大修',   tech:'王工', date:'03/25', status:'pending' },
+  { elvid:'EL007', addr:'A栋7单元', type:'照明故障维修', tech:'赵工', date:'03/25', status:'urgent' },
+  { elvid:'EL044', addr:'D栋5单元', type:'年度定检',     tech:'陈工', date:'03/26', status:'pending' },
+  { elvid:'EL019', addr:'E栋4单元', type:'安全回路检修', tech:'刘工', date:'03/25', status:'urgent' },
+  { elvid:'EL031', addr:'F栋3单元', type:'月度保养',     tech:'孙工', date:'03/23', status:'done' },
+  { elvid:'EL048', addr:'G栋6单元', type:'平层调试',     tech:'周工', date:'03/26', status:'pending' },
+];
+const statusLabel = { done:'已完成', pending:'待处理', urgent:'紧急' };
+const maintFull = [...maintData, ...maintData];
+$('maintList').innerHTML = `
+  <table class="maint-table">
+    <thead>
+      <tr>
+        <th>编号</th><th>位置</th><th>维保类型</th><th>负责人</th><th>日期</th><th>状态</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${maintFull.map(m => `
+        <tr>
+          <td>${m.elvid}</td>
+          <td>${m.addr}</td>
+          <td>${m.type}</td>
+          <td>${m.tech}</td>
+          <td>${m.date}</td>
+          <td><span class="tag ${m.status}">${statusLabel[m.status]}</span></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+`;
+
+/* =====================================================
+   区域分布
+   ===================================================== */
+const regions = [
+  { name:'华东区', count:698 },
+  { name:'华南区', count:542 },
+  { name:'华北区', count:478 },
+  { name:'西南区', count:312 },
+  { name:'华中区', count:276 },
+  { name:'西北区', count:118 },
+  { name:'东北区', count:62  },
+];
+const maxRegion = Math.max(...regions.map(r => r.count));
+$('regionList').innerHTML = regions.map(r => `
+  <div class="region-row">
+    <div class="region-name">${r.name}</div>
+    <div class="region-bar-wrap">
+      <div class="region-bar-fill" style="width:${Math.round(r.count / maxRegion * 100)}%"></div>
+    </div>
+    <div class="region-count">${r.count}</div>
+    <div class="region-rate">${(r.count / 2486 * 100).toFixed(1)}%</div>
+  </div>
+`).join('');
+
+/* =====================================================
+   响应式 resize
+   ===================================================== */
+window.addEventListener('resize', () => {
+  [runTrendChart, faultPieChart, energyChart, monthRunChart, complianceChart, healthRadarChart]
+    .forEach(c => c.resize());
+});
+
+/* =====================================================
+   模拟实时数据更新（每3秒）
+   ===================================================== */
+setInterval(() => {
+  // 随机更新运行中电梯楼层
+  document.querySelectorAll('.elv-item.running .elv-floor').forEach(el => {
+    if (Math.random() < 0.3) {
+      el.textContent = floorList[Math.floor(Math.random() * floorList.length)] + 'F';
+    }
+  });
+  // 更新运行趋势当前小时数据（更新独立数组再重新渲染，避免修改 option 引用）
+  runTrendData[new Date().getHours()] = rand(1200, 4800);
+  runTrendChart.getOption().series[0].data = runTrendData;
+  runTrendChart.setOption(runTrendChart.getOption());
+}, 3000);
+</script>
+</body>
+</html>
