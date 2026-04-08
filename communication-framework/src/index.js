@@ -48,6 +48,20 @@ const {
 // 队列层
 const { MessageQueue, RequestManager } = require('./queue');
 
+// OTA 编程层
+const {
+  DeviceProgram,
+  GardenProgram,
+  ProgramState,
+  OTACommand,
+  OTAStatus,
+  GardenToolType,
+  GardenToolTypeName,
+  OTASrcAddress,
+  SerialConfig,
+  OTADefaults,
+} = require('./program');
+
 // 工具
 const EventEmitter = require('./utils/EventEmitter');
 const { Logger, LogLevel } = require('./utils/Logger');
@@ -87,6 +101,18 @@ module.exports = {
   GardenProtocolConstants,
   DeviceAddress,
   DeviceAddressName,
+
+  // OTA 编程层
+  DeviceProgram,
+  GardenProgram,
+  ProgramState,
+  OTACommand,
+  OTAStatus,
+  GardenToolType,
+  GardenToolTypeName,
+  OTASrcAddress,
+  SerialConfig,
+  OTADefaults,
 
   // 队列层
   MessageQueue,
