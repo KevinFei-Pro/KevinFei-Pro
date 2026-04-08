@@ -25,6 +25,7 @@ const {
   WiFiLinkAdapter,
   LinkState,
   LinkType,
+  BLEConstants,
 } = require('./link');
 
 // 协议层
@@ -35,6 +36,13 @@ const {
   FuncCode,
   calculateCRC16,
   verifyCRC16,
+  ChecksumStrategy,
+  ModbusCRC16Strategy,
+  GardenPacker,
+  GardenParser,
+  GardenProtocolConstants,
+  DeviceAddress,
+  DeviceAddressName,
 } = require('./protocol');
 
 // 队列层
@@ -59,14 +67,26 @@ module.exports = {
   WiFiLinkAdapter,
   LinkState,
   LinkType,
+  BLEConstants,
 
-  // 协议层
+  // 协议层 - 原有协议
   Packer,
   Parser,
   ProtocolConstants,
   FuncCode,
   calculateCRC16,
   verifyCRC16,
+
+  // 协议层 - 校验算法策略
+  ChecksumStrategy,
+  ModbusCRC16Strategy,
+
+  // 协议层 - 花园协议
+  GardenPacker,
+  GardenParser,
+  GardenProtocolConstants,
+  DeviceAddress,
+  DeviceAddressName,
 
   // 队列层
   MessageQueue,

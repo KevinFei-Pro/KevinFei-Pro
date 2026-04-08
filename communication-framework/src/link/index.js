@@ -3,6 +3,7 @@ const BLELinkAdapter = require('./BLELinkAdapter');
 const WebSocketLinkAdapter = require('./WebSocketLinkAdapter');
 const WiFiLinkAdapter = require('./WiFiLinkAdapter');
 const { LinkState, LinkType } = require('./LinkConstants');
+const { BLEConstants } = require('./BLEConstants');
 
 module.exports = {
   LinkAdapter,
@@ -11,4 +12,5 @@ module.exports = {
   WiFiLinkAdapter,
   LinkState,
   LinkType,
+  BLEConstants,
 };
