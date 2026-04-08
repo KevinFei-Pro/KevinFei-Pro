@@ -1,6 +1,6 @@
 # RN Communication Framework
 
-适用于 React Native 的分层通讯框架，支持 **BLE（低功耗蓝牙）**、**Wi-Fi（TCP Socket）**、**WebSocket** 三种链路，采用类 Modbus 的二进制协议格式。
+适用于 React Native 的分层通讯框架，支持 **BLE（低功耗蓝牙）**、**Wi-Fi（TCP Socket）**、**WebSocket** 三种链路，采用类 Modbus 的二进制协议格式。同时提供 **设备 OTA 编程** 能力，支持花园工具类设备的固件升级。
 
 ## 架构总览
 
@@ -8,7 +8,16 @@
 ┌──────────────────────────────────────────────────────┐
 │                   业务层 (Your App)                    │
 ├──────────────────────────────────────────────────────┤
-│              CommunicationManager (管理器)             │
+│  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │ CommunicationMgr │  │  OTA 编程层 (Program)     │  │
+│  │ (通讯管理器)      │  │  ┌─────────────────────┐ │  │
+│  └──────────────────┘  │  │   DeviceProgram      │ │  │
+│                        │  │   (抽象基类)          │ │  │
+│                        │  ├─────────────────────┤ │  │
+│                        │  │   GardenProgram      │ │  │
+│                        │  │   (花园工具 OTA)      │ │  │
+│                        │  └─────────────────────┘ │  │
+│                        └──────────────────────────┘  │
 ├──────────────────────────────────────────────────────┤
 │  通讯层 (Channel)                                     │
 │  ┌────────────────┐  ┌───────────────────────────┐   │
@@ -246,6 +255,227 @@ npm install
 npm test
 ```
 
+## 设备 OTA 编程 (Device OTA Programming)
+
+框架提供了抽象的设备 OTA 编程能力，采用分层设计以便后续扩展支持更多类型设备的 OTA 升级。
+
+### OTA 架构
+
+```
+┌────────────────────────┐
+│     DeviceProgram      │  ← 抽象基类，定义 OTA 通用流程
+│  (状态管理/进度/事件)    │
+├────────────────────────┤
+│     GardenProgram      │  ← 花园工具 OTA 实现
+│  (割草机/吹风机/链锯等)  │
+├────────────────────────┤
+│    GardenPacker /      │  ← 花园协议编解码
+│    GardenParser        │
+└────────────────────────┘
+```
+
+### 支持的设备类型
+
+| 设备类型 | 枚举值 | 说明 |
+|---------|--------|------|
+| `LAWN_MOWER` | 0x01 | 割草机 |
+| `BLOWER` | 0x02 | 吹风机 |
+| `CHAINSAW` | 0x03 | 链锯 |
+| `HEDGE_TRIMMER` | 0x04 | 修枝机 |
+
+### OTA 协议格式
+
+GardenProgram 使用花园协议进行 OTA 通信，协议封装采用 **小端模式 (Little-Endian)**：
+
+```
++--------+--------+--------+--------+--------+--------+--------+--------+
+| Header | Header |  Dest  |  Src   | Length | TypeID | Data.. | CRC16  |
+| 0xC5   | 0x5C   | 1 byte | 1 byte | 1 byte | 1 byte | N bytes| 2 bytes|
++--------+--------+--------+--------+--------+--------+--------+--------+
+```
+
+**源地址 (Src / 第四字节)**:
+
+| 地址 | 值 | 说明 |
+|------|-----|------|
+| `IOT` | 0x00 | IOT（蓝牙通信板） |
+| `UI` | 0x08 | UI（显示屏/调试软件） |
+
+**OTA TypeID 命令**:
+
+| 命令 | TypeID | 说明 |
+|------|--------|------|
+| `OTA_START` | 0xF0 | OTA 开始/初始化 |
+| `OTA_DATA` | 0xF1 | OTA 数据传输 |
+| `OTA_VERIFY` | 0xF2 | OTA 校验 |
+| `OTA_END` | 0xF3 | OTA 结束 |
+| `OTA_ABORT` | 0xF4 | OTA 中止 |
+| `OTA_ACK` | 0xF5 | 设备确认 |
+| `OTA_NACK` | 0xF6 | 设备否认/错误 |
+
+### 蓝牙串口配置
+
+| 参数 | 值 |
+|------|-----|
+| 波特率 (Baud Rate) | 115200 |
+| 数据位 (Data Bits) | 8 |
+| 停止位 (Stop Bits) | 1 |
+| 校验位 (Parity) | 无 (none) |
+| 硬件控制流 (Flow Control) | 无 (none) |
+
+### OTA 流程
+
+```
+1. OTA_START  (0xF0) → 发送固件信息（大小、工具类型、CRC）
+2. OTA_DATA   (0xF1) → 分包传输固件数据（自动分块 + 重试）
+3. OTA_VERIFY (0xF2) → 发送校验信息
+4. OTA_END    (0xF3) → 完成 OTA
+```
+
+### OTA 使用示例
+
+```javascript
+const {
+  GardenProgram,
+  OTASrcAddress,
+  GardenToolType,
+  DeviceAddress,
+} = require('./communication-framework/src');
+
+// 创建花园工具 OTA 编程器
+const program = new GardenProgram({
+  // 发送函数（通过 BLE 链路发送 OTA 数据）
+  sendFn: async (frame) => await bleAdapter.sendOTA(frame),
+  srcAddress: OTASrcAddress.IOT,         // 0x00 IOT（蓝牙通信板）
+  destAddress: DeviceAddress.TOOL,       // 目标设备: 工具
+  toolType: GardenToolType.LAWN_MOWER,   // 工具类型: 割草机
+  chunkSize: 128,                        // 分包大小
+  responseTimeout: 5000,                 // 响应超时
+  maxRetries: 3,                         // 最大重试次数
+});
+
+// 监听进度
+program.on('progress', ({ sent, total, percentage }) => {
+  console.log(`OTA 进度: ${percentage}% (${sent}/${total})`);
+});
+
+// 监听状态变化
+program.on('stateChange', (newState, oldState) => {
+  console.log(`OTA 状态: ${oldState} -> ${newState}`);
+});
+
+// 监听完成
+program.on('complete', () => {
+  console.log('OTA 升级完成！');
+});
+
+// 监听错误
+program.on('error', (err) => {
+  console.error('OTA 错误:', err.message);
+});
+
+// 将设备返回的数据传给解析器
+bleAdapter.on('otaData', (data) => {
+  program.feedResponse(data);
+});
+
+// 开始 OTA 升级
+const firmwareData = new Uint8Array(/* 固件二进制数据 */);
+await program.startProgram(firmwareData);
+
+// 中止 OTA（如果需要）
+// await program.abort();
+
+// 释放资源
+program.dispose();
+```
+
+### 使用 UI 源地址
+
+```javascript
+// 如果从 UI（显示屏）发起 OTA
+const program = new GardenProgram({
+  sendFn: async (frame) => await bleAdapter.sendOTA(frame),
+  srcAddress: OTASrcAddress.UI,     // 0x08 UI（显示屏）
+  destAddress: DeviceAddress.TOOL,
+  toolType: GardenToolType.CHAINSAW,
+});
+```
+
+### 自定义设备 OTA
+
+如果需要支持其他类型设备的 OTA，继承 `DeviceProgram` 基类：
+
+```javascript
+const { DeviceProgram } = require('./communication-framework/src');
+
+class MyDeviceProgram extends DeviceProgram {
+  constructor(options) {
+    super({ name: 'MyDevice', ...options });
+    // 自定义初始化
+  }
+
+  async _sendInitCommand(firmware, options) {
+    // 实现 OTA 初始化命令
+  }
+
+  async _sendDataChunk(chunk, offset, chunkIndex, options) {
+    // 实现固件数据块传输
+  }
+
+  async _sendVerifyCommand(firmware, options) {
+    // 实现固件校验命令
+  }
+
+  async _sendCompleteCommand(options) {
+    // 实现 OTA 完成命令
+  }
+
+  async _sendAbortCommand() {
+    // 实现 OTA 中止命令
+  }
+}
+```
+
+### OTA API 参考
+
+#### GardenProgram
+
+| 属性/方法 | 说明 |
+|-----------|------|
+| `srcAddress` | 源地址 (0x00=IOT, 0x08=UI) |
+| `destAddress` | 目标设备地址 |
+| `toolType` | 花园工具类型 |
+| `state` | 当前 OTA 状态 |
+| `progress` | 传输进度 `{ sent, total, percentage }` |
+| `startProgram(firmware, options?)` | 开始 OTA 升级 |
+| `abort()` | 中止 OTA |
+| `reset()` | 重置状态 |
+| `feedResponse(data)` | 输入设备返回的原始数据 |
+| `dispose()` | 释放资源 |
+| `GardenProgram.serialConfig` | 蓝牙串口配置（静态属性） |
+
+| 事件 | 说明 |
+|------|------|
+| `stateChange` | OTA 状态变化 `(newState, oldState)` |
+| `progress` | 传输进度更新 `({ sent, total, percentage })` |
+| `complete` | OTA 完成 |
+| `error` | OTA 错误 |
+| `frame` | 收到设备帧（用于调试） |
+
+#### ProgramState (OTA 状态)
+
+| 状态 | 说明 |
+|------|------|
+| `IDLE` | 空闲 |
+| `INITIALIZING` | 初始化中 |
+| `TRANSFERRING` | 传输中 |
+| `VERIFYING` | 校验中 |
+| `COMPLETING` | 完成中 |
+| `COMPLETE` | 已完成 |
+| `ERROR` | 错误 |
+| `ABORTED` | 已中止 |
+
 ## 数据流示意
 
 ### 发送流程
@@ -265,4 +495,20 @@ LinkAdapter 收到原始字节
   → RequestManager 匹配序列号
     → 匹配成功：resolve 对应的 Promise
     → 未匹配：触发 'notification' 事件（设备主动上报）
+```
+
+### OTA 升级流程
+```
+App 调用 program.startProgram(firmware)
+  → GardenPacker.pack() 打包 OTA_START 命令帧（小端模式）
+  → sendFn() 通过 BLE OTA 特征值发送
+  → 等待设备 OTA_ACK 响应
+  → 循环发送 OTA_DATA 数据块
+    → 每块发送后等待 ACK
+    → 失败自动重试
+    → 触发 progress 事件
+  → GardenPacker.pack() 打包 OTA_VERIFY 校验帧
+  → 等待设备 ACK
+  → GardenPacker.pack() 打包 OTA_END 完成帧
+  → 触发 complete 事件
 ```
