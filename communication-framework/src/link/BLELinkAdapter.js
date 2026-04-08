@@ -1,5 +1,6 @@
 const LinkAdapter = require('./LinkAdapter');
 const { LinkState, LinkType } = require('./LinkConstants');
+const { BLEConstants } = require('./BLEConstants');
 const { Logger } = require('../utils/Logger');
 
 /**
@@ -8,33 +9,53 @@ const { Logger } = require('../utils/Logger');
  * 封装 react-native-ble-plx 或 react-native-ble-manager 的底层 API。
  * 使用者需要在构造时注入 BLE Manager 实例。
  *
+ * 默认使用花园协议的蓝牙服务和特征值:
+ *   服务 UUID: FE00
+ *   写特征:    2A07 (App → 设备)
+ *   通知特征:  2A08 (设备 → App)
+ *   OTA 写:    2A09 (下发 OTA 数据)
+ *   OTA 通知:  2A0A (回复 OTA 数据)
+ *
  * @example
  * const bleAdapter = new BLELinkAdapter({
- *   bleManager: bleManagerInstance,    // 来自 react-native-ble-plx
- *   serviceUUID: '0000fff0-...',
- *   writeCharUUID: '0000fff1-...',
- *   notifyCharUUID: '0000fff2-...',
+ *   bleManager: bleManagerInstance,
+ *   // 使用默认的 FE00 服务和特征值
+ * });
+ *
+ * @example
+ * const bleAdapter = new BLELinkAdapter({
+ *   bleManager: bleManagerInstance,
+ *   serviceUUID: 'FE00',
+ *   writeCharUUID: '2A07',
+ *   notifyCharUUID: '2A08',
+ *   otaWriteCharUUID: '2A09',
+ *   otaNotifyCharUUID: '2A0A',
  * });
  */
 class BLELinkAdapter extends LinkAdapter {
   /**
    * @param {Object} options
    * @param {Object} options.bleManager - BLE Manager 实例（react-native-ble-plx BleManager）
-   * @param {string} options.serviceUUID - 服务 UUID
-   * @param {string} options.writeCharUUID - 写特征 UUID
-   * @param {string} options.notifyCharUUID - 通知特征 UUID
+   * @param {string} [options.serviceUUID='FE00'] - 服务 UUID
+   * @param {string} [options.writeCharUUID='2A07'] - 写特征 UUID（App → 设备）
+   * @param {string} [options.notifyCharUUID='2A08'] - 通知特征 UUID（设备 → App）
+   * @param {string} [options.otaWriteCharUUID='2A09'] - OTA 写特征 UUID
+   * @param {string} [options.otaNotifyCharUUID='2A0A'] - OTA 通知特征 UUID
    * @param {number} [options.mtu=20] - MTU 大小
    */
   constructor(options = {}) {
     super(LinkType.BLE);
     this.bleManager = options.bleManager || null;
-    this.serviceUUID = options.serviceUUID || '';
-    this.writeCharUUID = options.writeCharUUID || '';
-    this.notifyCharUUID = options.notifyCharUUID || '';
+    this.serviceUUID = options.serviceUUID || BLEConstants.SERVICE_UUID;
+    this.writeCharUUID = options.writeCharUUID || BLEConstants.CHAR_WRITE;
+    this.notifyCharUUID = options.notifyCharUUID || BLEConstants.CHAR_NOTIFY;
+    this.otaWriteCharUUID = options.otaWriteCharUUID || BLEConstants.CHAR_OTA_WRITE;
+    this.otaNotifyCharUUID = options.otaNotifyCharUUID || BLEConstants.CHAR_OTA_NOTIFY;
     this.mtu = options.mtu || 20;
 
     this._device = null;
     this._subscription = null;
+    this._otaSubscription = null;
     this.logger = new Logger('Link:BLE');
   }
 
@@ -80,7 +101,7 @@ class BLELinkAdapter extends LinkAdapter {
         }
       }
 
-      // 监听通知特征
+      // 监听通知特征 (设备 → App)
       this._subscription = this._device.monitorCharacteristicForService(
         this.serviceUUID,
         this.notifyCharUUID,
@@ -96,6 +117,24 @@ class BLELinkAdapter extends LinkAdapter {
           }
         }
       );
+
+      // 监听 OTA 通知特征 (设备 OTA 回复)
+      if (this.otaNotifyCharUUID) {
+        this._otaSubscription = this._device.monitorCharacteristicForService(
+          this.serviceUUID,
+          this.otaNotifyCharUUID,
+          (error, characteristic) => {
+            if (error) {
+              this._onError(error);
+              return;
+            }
+            if (characteristic && characteristic.value) {
+              const data = this._base64ToUint8Array(characteristic.value);
+              this.emit('otaData', data);
+            }
+          }
+        );
+      }
 
       // 监听断开事件
       this.bleManager.onDeviceDisconnected(deviceId, (error) => {
@@ -153,6 +192,33 @@ class BLELinkAdapter extends LinkAdapter {
       await this._device.writeCharacteristicWithResponseForService(
         this.serviceUUID,
         this.writeCharUUID,
+        base64Data
+      );
+    }
+  }
+
+  /**
+   * 发送 OTA 数据到 BLE 设备
+   * 通过 OTA 写特征 (2A09) 发送数据
+   * @param {Uint8Array} data
+   * @returns {Promise<void>}
+   */
+  async sendOTA(data) {
+    if (!this.isConnected() || !this._device) {
+      throw new Error('BLE is not connected');
+    }
+
+    if (!this.otaWriteCharUUID) {
+      throw new Error('OTA write characteristic UUID is not configured');
+    }
+
+    const chunks = this._splitByMTU(data);
+
+    for (const chunk of chunks) {
+      const base64Data = this._uint8ArrayToBase64(chunk);
+      await this._device.writeCharacteristicWithResponseForService(
+        this.serviceUUID,
+        this.otaWriteCharUUID,
         base64Data
       );
     }
@@ -216,6 +282,10 @@ class BLELinkAdapter extends LinkAdapter {
     if (this._subscription) {
       this._subscription.remove();
       this._subscription = null;
+    }
+    if (this._otaSubscription) {
+      this._otaSubscription.remove();
+      this._otaSubscription = null;
     }
     this._device = null;
   }
