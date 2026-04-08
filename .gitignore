@@ -1,2 +1,10 @@
-# Private project - do not track
-communication-framework/
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# IDE
+.idea/
+.vscode/
